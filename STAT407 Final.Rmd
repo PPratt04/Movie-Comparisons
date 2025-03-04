@@ -1,0 +1,1013 @@
+---
+title: 'Connections between the Highest Rated Movies of All Time '
+author: "Parker Pratt^[Oregon Institute of Technology, parker.pratt@oit.edu]"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+html_document: default
+pdf_document:
+    toc: false
+keywords: 'Keywords: R, Movie, Director, Genre, Decade, Network, Oregon Tech STAT407'
+abstract: |-
+ \singlespacing This project is for STAT 407 at Oregon Tech.  Within this
+  project, I will be analyzing the connections between the top movies of all
+  time and their directors, genres, and years released. \n\n
+       
+            
+ **Keywords: R, Movie, Director, Genre, Decade, Network, Oregon Tech STAT407**
+                      
+subtitle: STAT407 Final Project
+header-includes:
+- \usepackage{setspace}\doublespacing
+- \usepackage[switch, pagewise, running]{lineno}
+- \usepackage{xcolor}
+- \usepackage{float} \floatplacement{figure}{H}
+urlcolor: bluesaw
+fontsize: 10pt
+with_amsmath: yes
+link-citations: yes
+natbib: yes
+csl: ieee.csl
+bibliography:
+- references.bib
+- packages.bib
+---
+
+\newpage
+
+
+<!--#  Anything in this format is an author comment and will not appear in the compiled paper.  The code below is used to suppress all output from analysis.  In order to include the code or output, change the options.  Echo = TRUE will put the code in the paper.  Include = TRUE and Echo = false will put the output but no code in the paper. -->
+
+```{r Chunk_Options, echo = FALSE, include = FALSE}
+#This code sets the basic options for all R chunks to not appear in the actual paper.  The output may be called in-line in the paper.  Graphs, tables, and other output may be called in-line or in the appendix as needed.
+knitr::opts_chunk$set(include = TRUE, echo = TRUE, message = FALSE, warning = FALSE, paged.print = TRUE, error = FALSE, out.width = "80%")
+```
+
+<!--# Read the data-->
+
+```{r echo = FALSE, include = FALSE}
+data <- read.csv("Movie Dataset.csv", header=T, as.is=T)
+```
+
+# Introduction {#Introduction}
+
+<!--# Describe the problem (i.e. what question are you trying to answer?) -->
+
+In this project, I am investigating the connections that exists between IMDb's highest rated movies of all time in the aspects of directors, genres, rating, and decade released. With this information, I can find the most central movies and directors and find the links between them. I can also make inferences on how popular movies may change over time based on genres and ratings.
+
+<!--# Briefly introduce the data and list the data sources -->
+
+The data that is used comes from the official IMDb website [@misc_topmovies]. This data is used to interpret the connections between the various movies.
+
+<!--# Identify any critical ethical issues that must be considered for the access, storage, or use of the data.  Also delcare any conflicts of interest, funding sources, or other ethical considerations that surround this anlaysis or the use of the results. -->
+
+<!--# Briefly state the analyses used and the key results -->
+
+Within this work, I used iterative methods to parse through the data and grab movie titles, directors, years, genres, and ratings to assign to variables. While doing this, edges are being created between movies that share a director, directors that work together on a movie, or all movies within a decade. Once the edgelist is created, necessary analyses such as community are performed and the data is plotted. With the plotted data, the key results found were that there were central directors and movies in this dataset.
+
+# Part 1 {#Part1}
+
+## Data {#Data}
+
+### Data Source {#Data_DataSource}
+
+<!--#  Where did the data come from?  Who does it belong to?  How is it stored and protected?  Are there any ethical or legal implications for the collection, storage, dissemination and reporting of this data? -->
+
+The data for this analysis comes from the official IMDb website [@misc_topmovies]. This dataset contains 1001 movies to be used for the three different analysis. With the data found, the columns of "Title", "IMDb Rating", "Year", "Genres", and "Directors" were used.
+
+As this data is open for use and distribution, there are no further legal implications for the collection, storage or dissemination of the data.
+
+<!-- ### Data Description/Dictionary {#Data_Description} -->
+
+<!--# Describe the data including definitions of the variables -->
+
+### Wrangling, Cleaning, Imputing, and Encoding  {#Data_WCIE}
+
+I began this analysis by exporting the 1001 movies along with their additional data to a "csv" file. In this file, there was a lot of information but the information focused on for this project are the movie titles, IMDb ratings, years, genres, and directors. Luckily, there was zero missing data for the columns that were used so no imputation was needed. From here, I made a function that would create edges between movies that share a director, directors who work on the same movie, and movies that share a decade that they were released in.
+
+<!--# Describe the methods and results you obtain to assess the data quality and prepare the data for analysis, such as data types, amount of missing data, how you handled missing data, and any transformations you used on the data. -->
+
+### Exploratory Analysis {#Data_EDA}
+
+<!--# Include results of exploratory data analysis, including but not limited to the number of observations, descriptive statistics, and plots of the data -->
+
+The following plot is of the relationships between the directors who were apart of the same movie as another director.
+```{r echo = FALSE, include = TRUE}
+library(igraph)
+library(network)
+library(kableExtra)
+library(RColorBrewer)
+
+# Split Directors column into individual directors
+all_directors <- strsplit(as.character(data$Directors), ",")
+
+# Flatten the list and get unique directors
+unique_directors <- unique(unlist(all_directors))
+
+# Initialize variables
+num_pairs <- 0
+edge_list <- matrix(nrow = 0, ncol = 2)
+
+# Create pairs of directors that are a part of the same movie
+for (directors_list in all_directors) {
+  if (length(directors_list) > 1) {
+    director_pairs <- combn(directors_list, 2)
+    num_pairs_article <- ncol(director_pairs)
+    edge_list <- rbind(edge_list, t(director_pairs))
+    num_pairs <- num_pairs + num_pairs_article
+  }
+}
+
+# Create an edgelist
+edge_list_df <- as.data.frame(edge_list)
+colnames(edge_list_df) <- c("director1", "director2")
+
+# Make a data frame
+net <- graph_from_data_frame(edge_list_df, directed = FALSE)
+
+#Use this dataframe to find communities
+netS <- simplify(net)
+communities <- edge.betweenness.community(netS)
+membership <- membership(communities)
+V(net)$community <- membership[V(netS)]
+
+#Find the degree and assign colors to different communities
+V(net)$degree <- igraph::degree(net)
+Community <- length(unique(V(net)$community))
+color_pal <- rainbow(Community)
+
+#Plot the data with the color based on the community and the size based on the degree
+plot(net,
+
+     vertex.label = NA,
+     vertex.color = color_pal[as.numeric(factor(V(net)$community))],
+     vertex.size = 5,
+
+     main = "Director-Director Network"
+)
+```
+
+Here we see that most of the directors only have one edge. However, there are a few components with a hub node where they shared one movie with a director and another movie with another director. In addition to this, there is one component that is much larger than all of the others.
+
+
+The plot below is using the same dataset as the plot above but is interpreting the relationships all movies made by the same director. The size of the nodes correlate to the movies IMDb rating.
+
+```{r echo = FALSE, include = TRUE}
+# Create a vector to store edges
+edge_listM <- c()
+
+# Add Edges for Shared Directors
+for (i in 1:nrow(data)) {
+  movie1 <- data$Title[i]
+  directors1 <- strsplit(as.character(data$Directors[i]), ", ")[[1]]
+  
+  shared_movies <- data[data$Directors %in% directors1 & data$Title != movie1, "Title"]
+
+    if (length(shared_movies) > 1) {
+    movie_pairs <- combn(shared_movies, 2)
+    num_pairs_article <- ncol(movie_pairs)
+    edge_listM <- rbind(edge_listM, t(movie_pairs))
+    num_pairs <- num_pairs + num_pairs_article
+  }
+}
+
+edge_listM_df <- as.data.frame(edge_listM)
+colnames(edge_listM_df) <- c("movie1", "movie2")
+
+netM <- graph_from_data_frame(edge_listM_df, directed = FALSE)
+
+# Get node names from the graph
+node_names <- V(netM)$name
+
+
+# Create a lookup table from original_dataset
+lookup_table <- setNames(data$IMDb.Rating, data$Title)
+
+# Iterate through each node in the graph
+for (node_name in node_names) {
+  # Find corresponding title in the lookup table
+  title <- node_name
+  if (title %in% names(lookup_table)) {
+    # Update IMDb rating attribute in the graph
+    netM <- set_vertex_attr(netM, "IMDb.Rating", index = node_name, value = lookup_table[[title]])
+  }
+}
+# Create a lookup table from original_dataset
+lookup_table2 <- setNames(data$Genres, data$Title)
+
+# Iterate through each node in the graph
+for (node_name in node_names) {
+  # Find corresponding title in the lookup table
+  title <- node_name
+  if (title %in% names(lookup_table2)) {
+    # Get genres for the movie from the lookup table
+    genres <- lookup_table2[[title]]
+    
+    # Ensure genres is of character type
+    genres <- as.character(genres)
+
+    # Split genres string by comma and take only the first genre
+    genre_part <- strsplit(genres, ",")[[1]]
+    first_genre <- trimws(genre_part[1]) 
+    
+    # Update Genre attribute in the graph with the first two genres
+    netM <- set_vertex_attr(netM, "Genre", index = node_name, value = first_genre)
+  }
+}
+
+# Define the breaks for different size groups based on IMDb ratings
+breaks <- c(0, 7.5, 8, 8.5, 9, 9.5, 10)  # Adjust the breaks as needed
+
+# Create the size groups based on IMDb ratings
+size_groups <- cut(V(netM)$IMDb.Rating, breaks = breaks, labels = FALSE)
+color_pal <- rainbow(length(unique(V(netM)$Genre))) 
+
+# Plot the network
+plot(netM,
+
+     vertex.label = NA,
+     vertex.color = color_pal[factor(V(netM)$Genre)], 
+     vertex.size = size_groups*3,
+
+     main = "Movie-Director Network",
+)
+
+legend("left",
+       legend = levels(factor(V(netM)$Genre)),
+       fill = color_pal,
+       title = "Genre",
+       cex=0.7
+)
+```
+
+The most noticeable part of this plot is that there is significant clustering and transitivity. There also seem to be a few genres that are most popular in this dataset.
+
+
+This plot uses the same dataset as the two above but this time creates edges between all movies that came out in the same decade. The size of the nodes correlate to the movies IMDb rating.
+
+```{r echo = FALSE, include = TRUE}
+# Create a vector to store edges
+edge_listD <- c()
+
+# #Below is for nodes with a value of at least 9
+# 
+# fdata <- data[as.numeric(data$IMDb.Rating) >= 9, ]
+# 
+# # Get unique decades from the dataset
+# 
+# unique_decades <- unique((fdata$Year %/% 10) * 10)
+# 
+# # Add Edges for Shared Decade
+# for (i in 1:nrow(fdata)) {
+#   movie1 <- fdata$Title[i]
+#   decade1 <- as.numeric((fdata$Year[i] %/% 10) * 10)
+# 
+#   shared_decade <- fdata[unique_decades %in% decade1 & fdata$Title != movie1, "Title"]
+# 
+#     if (length(shared_decade) > 1) {
+#     movie_pairs <- combn(shared_decade, 2)
+#     num_pairs_article <- ncol(movie_pairs)
+#     edge_list <- rbind(edge_list, t(movie_pairs))
+#     num_pairs <- num_pairs + num_pairs_article
+#   }
+# }
+
+unique_decades <- unique((data$Year %/% 10) * 10)
+
+
+for (decade in unique_decades) {
+  # Subset the data for the current decade
+  decade_data <- data[(data$Year %/% 10) * 10 == decade, ]
+
+  # Sample a subset of movies for the current decade
+  sample_size <- max(1, floor(nrow(decade_data) / 10))
+  sampled_movies <- sample(decade_data$Title, size = sample_size, replace = FALSE)
+
+  # Create edges for the sampled movies
+  if (length(sampled_movies) > 1) {
+    movie_pairs <- combn(sampled_movies, 2)
+    num_pairs_article <- ncol(movie_pairs)
+    edge_listD <- rbind(edge_listD, t(movie_pairs))
+  }
+}
+edge_listD_df <- as.data.frame(edge_listD)
+colnames(edge_listD_df) <- c("movie1", "movie2")
+
+netD <- graph_from_data_frame(edge_listD_df, directed = FALSE)
+
+# Get node names from the graph
+node_names <- V(netD)$name
+
+
+# Create a lookup table from original_dataset
+lookup_table <- setNames(data$IMDb.Rating, data$Title)
+
+# Iterate through each node in the graph
+for (node_name in node_names) {
+  # Find corresponding title in the lookup table
+  title <- node_name
+  if (title %in% names(lookup_table)) {
+    # Update IMDb rating attribute in the graph
+    netD <- set_vertex_attr(netD, "IMDb.Rating", index = node_name, value = lookup_table[[title]])
+  }
+}
+# Create a lookup table from original_dataset
+lookup_table <- setNames(data$Year, data$Title)
+
+# Iterate through each node in the graph
+for (node_name in node_names) {
+  # Find corresponding title in the lookup table
+  title <- node_name
+  if (title %in% names(lookup_table)) {
+    # Update IMDb rating attribute in the graph
+    netD <- set_vertex_attr(netD, "Decade", index = node_name, value = (lookup_table[[title]] %/% 10) * 10)
+  }
+}
+# Create a lookup table from original_dataset
+lookup_table2 <- setNames(data$Genres, data$Title)
+
+# Iterate through each node in the graph
+for (node_name in node_names) {
+  # Find corresponding title in the lookup table
+  title <- node_name
+  if (title %in% names(lookup_table2)) {
+    # Get genres for the movie from the lookup table
+    genres <- lookup_table2[[title]]
+
+    # Ensure genres is of character type
+    genres <- as.character(genres)
+
+    # Split genres string by comma and take only the first genre
+    genre_part <- strsplit(genres, ",")[[1]]
+    first_genre <- trimws(genre_part[1])
+
+    # Update Genre attribute in the graph with the first two genres
+    netD <- set_vertex_attr(netD, "Genre", index = node_name, value = first_genre)
+  }
+}
+
+# Define the breaks for different size groups based on IMDb ratings
+breaks <- c(0, 7.5, 8, 8.5, 9, 9.5, 10)
+
+# Create the size groups based on IMDb ratings
+size_groups <- cut(V(netD)$IMDb.Rating, breaks = breaks, labels = FALSE)
+color_pal <- rainbow(length(unique(V(netD)$Genre)))
+
+# Plot the network
+plot(netD,
+     
+     layout = layout_with_fr(netD),
+     vertex.label = NA,
+     vertex.color = color_pal[factor(V(netD)$Genre)], 
+     vertex.size = size_groups*3,
+
+     main = "Movie-Decade Network",
+)
+
+legend("left",
+       legend = levels(factor(V(netD)$Genre)),
+       fill = color_pal,
+       title = "Genre",
+       cex=0.7
+)
+```
+
+In this plot, we can see that some components have only a couple nodes while others have many. 
+
+
+<!-- ### Further Exploratory Analysis -->
+### Issues during Exploratory Analysis
+
+<!--#  Any further exploration that needs perfomed after wrangling, cleaning, imputing, feature extraction, enritchment, and encoding should be presented here.  This may include the results of dimensional reduction, feature importance measures, etc...-->
+
+The first two networks went fairly smoothly however I ran into an issue in the third one. When attempting to plot the network with edges between every node that shares a decade the program kept crashing. This is because there were too many (4.4 million) edges created during the exploratory process. The way I fixed this was by only using 1/10 the amount of nodes from each decade for my analysis. By doing this, the program was able to run however a side effect is that there may be genres missing from the third plot entirely. Because it chooses the nodes differently each time, genres with few movies may not be represented.
+
+<!-- ### Validation Plan {#Data_ValidationPlan} -->
+
+<!--#  When addressing data pre-processing, make sure you point out how you avoided data-leakage and your plan validation procedures.  Indicate why you think this is the best plan (train/test random split,  Cross Validation, Rolling Cross Validation, Time Series Split, Blocked Cross-Validation, etc…) -->
+
+\newpage
+
+# Part 2 {#Part2}
+
+## Analysis and Results {#AnalysisAndResults}
+
+### Methods {#AnalysisAndResults_Methods}
+
+<!--#  Explain the methods you used to complete the analysis, reasons for choosing that analysis, and the results -->
+
+The methods used to complete the analysis include creating edgelists, finding communities, and using the rating and genre as an element in plotting the resulting data. The reason I chose this was because I found that by having the nodes color-coded based on what community or genre they're apart of, there was an additional aspect added to the data that could lead to more insights in connections between the movies and directors. By having the size represented as rating, it became easier to see which genres, directors, and decades could be considered as the "most successful".
+<!-- #### Theory: {#AnalysisAndResults_Methods_Theory} -->
+
+<!-- #### Reasoning on Method Selection: {#AnalysisAndResults_Methods_Reasoning} -->
+
+\newpage
+
+### Results {#AnalysisAndResults_Results}
+
+The results from this project are all about which movies, directors, genres, and decades are most important. For the first plot which is about directors I used this table for my results:
+
+```{r echo=FALSE, include=FALSE}
+# Compute PageRank
+V(net)$page_rank <- page_rank(net)$vector
+
+# Compute betweenness centrality
+betweenness_centrality <- igraph::betweenness(net)
+betweenness_summary <- round(summary(betweenness_centrality),3)
+
+# Compute node centrality (closeness)
+closeness_centrality <- igraph::closeness(net)
+closeness_summary <- round(summary(closeness_centrality),3)
+
+# Compute degree centrality
+degree_centrality <- igraph::degree(net) / (vcount(net) - 1)
+degree_summary <- round(summary(degree_centrality),3)
+
+# Print the top nodes for each centrality measure
+summary_df <- data.frame(
+  Measure = c("Degree Centrality", "Betweenness Centrality", "Closeness Centrality"),
+  Min = c(degree_summary[1], betweenness_summary[1], closeness_summary[1]),
+  `1st Qu.` = c(degree_summary[2], betweenness_summary[2], closeness_summary[2]),
+  Median = c(degree_summary[3], betweenness_summary[3], closeness_summary[3]),
+  Mean = c(degree_summary[4], betweenness_summary[4], closeness_summary[4]),
+  `3rd Qu.` = c(degree_summary[5], betweenness_summary[5], closeness_summary[5]),
+  Max = c(degree_summary[6], betweenness_summary[6], closeness_summary[6])
+)
+
+# Create a nice table using kableExtra
+table <- kable(summary_df, "html", align = "c", caption = "Summary of Centrality Measures") %>%
+     kable_styling()
+```
+
+```{r echo=FALSE, include=TRUE}
+library(DT)
+
+V(net)$degree_centrality <- degree_centrality
+V(net)$betweenness_centrality <- betweenness_centrality
+V(net)$closeness_centrality <- closeness_centrality
+
+# Extract vertex attributes into a data frame
+vertex_attrs <- data.frame(
+  ID = V(net)$name, 
+  Degree_Centrality = V(net)$degree_centrality,
+  Betweenness_Centrality = V(net)$betweenness_centrality,
+  Closeness_Centrality = V(net)$closeness_centrality,
+  Page_rank = V(net)$page_rank
+)
+
+# Create an HTML table with sortable columns using DT
+datatable(vertex_attrs, 
+          options = list(
+            dom = 'Bfrtip',
+            buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+          ),
+          rownames = FALSE
+)
+```
+Using this table, I found that the director with the highest degree centrality is named, "Bill Roberts". This director had a value of 0.200. The director with the highest betweenness centrality is named, "David Hand". This director had a betweenness centrality of 25.590. There were many directors with a closeness centrality of 1. The highest page_rank belongs to a director named, "Lee Unkrich". The page rank for this director is 0.013. 
+
+
+
+
+For the second plot which creates connections between movies and directors I used this table:
+```{r echo=FALSE, include=FALSE}
+# Compute PageRank
+V(netM)$page_rank <- page_rank(netM)$vector
+
+# Compute betweenness centrality
+betweenness_centrality <- igraph::betweenness(netM)
+betweenness_summary <- round(summary(betweenness_centrality),3)
+
+# Compute node centrality (closeness)
+closeness_centrality <- igraph::closeness(netM)
+closeness_summary <- round(summary(closeness_centrality),3)
+
+# Compute degree centrality
+degree_centrality <- igraph::degree(netM) / (vcount(netM) - 1)
+degree_summary <- round(summary(degree_centrality),3)
+
+# Print the top nodes for each centrality measure
+summary_df <- data.frame(
+  Measure = c("Degree Centrality", "Betweenness Centrality", "Closeness Centrality"),
+  Min = c(degree_summary[1], betweenness_summary[1], closeness_summary[1]),
+  `1st Qu.` = c(degree_summary[2], betweenness_summary[2], closeness_summary[2]),
+  Median = c(degree_summary[3], betweenness_summary[3], closeness_summary[3]),
+  Mean = c(degree_summary[4], betweenness_summary[4], closeness_summary[4]),
+  `3rd Qu.` = c(degree_summary[5], betweenness_summary[5], closeness_summary[5]),
+  Max = c(degree_summary[6], betweenness_summary[6], closeness_summary[6])
+)
+
+# Create a nice table using kableExtra
+table <- kable(summary_df, "html", align = "c", caption = "Summary of Centrality Measures") %>%
+     kable_styling()
+```
+
+```{r echo=FALSE, include=TRUE}
+V(netM)$degree_centrality <- degree_centrality
+V(netM)$betweenness_centrality <- betweenness_centrality
+V(netM)$closeness_centrality <- closeness_centrality
+
+# Extract vertex attributes into a data frame
+vertex_attrs <- data.frame(
+  ID = V(netM)$name, 
+  Degree_Centrality = V(netM)$degree_centrality,
+  Betweenness_Centrality = V(netM)$betweenness_centrality,
+  Closeness_Centrality = V(netM)$closeness_centrality,
+  Page_rank = V(netM)$page_rank
+)
+
+# Create an HTML table with sortable columns using DT
+datatable(vertex_attrs, 
+          options = list(
+            dom = 'Bfrtip',
+            buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+          ),
+          rownames = FALSE
+)
+```
+Using this table, I found that there were quite a few movies with the highest degree centrality such as, "Raiders of the Lost Ark". These movies had a value of 0.382. The one with the highest betweenness centrality is, "Toy Story 3". This one had a betweenness centrality of 1. There are eight movies tied for the highest closeness centrality. These movies all had a value of 1. The highest page_rank belongs to, "Toy Story 3" as well. The page rank for this node is around 0.003. 
+
+
+
+
+For the third plot which focuses on connections between movies made in the same decade, I used the following table.
+
+```{r echo=FALSE, include=FALSE}
+# Compute PageRank
+V(netD)$page_rank <- page_rank(netD)$vector
+
+# Compute betweenness centrality
+betweenness_centrality <- igraph::betweenness(netD)
+betweenness_summary <- round(summary(betweenness_centrality),3)
+
+# Compute node centrality (closeness)
+closeness_centrality <- igraph::closeness(netD)
+closeness_summary <- round(summary(closeness_centrality),3)
+
+# Compute degree centrality
+degree_centrality <- igraph::degree(netD) / (vcount(netD) - 1)
+degree_summary <- round(summary(degree_centrality),3)
+
+# Print the top nodes for each centrality measure
+summary_df <- data.frame(
+  Measure = c("Degree Centrality", "Betweenness Centrality", "Closeness Centrality"),
+  Min = c(degree_summary[1], betweenness_summary[1], closeness_summary[1]),
+  `1st Qu.` = c(degree_summary[2], betweenness_summary[2], closeness_summary[2]),
+  Median = c(degree_summary[3], betweenness_summary[3], closeness_summary[3]),
+  Mean = c(degree_summary[4], betweenness_summary[4], closeness_summary[4]),
+  `3rd Qu.` = c(degree_summary[5], betweenness_summary[5], closeness_summary[5]),
+  Max = c(degree_summary[6], betweenness_summary[6], closeness_summary[6])
+)
+
+# Create a nice table using kableExtra
+table <- kable(summary_df, "html", align = "c", caption = "Summary of Centrality Measures") %>%
+     kable_styling()
+```
+
+```{r echo=FALSE, include=TRUE}
+V(netD)$degree_centrality <- degree_centrality
+V(netD)$betweenness_centrality <- betweenness_centrality
+V(netD)$closeness_centrality <- closeness_centrality
+
+# Extract vertex attributes into a data frame
+vertex_attrs <- data.frame(
+  ID = V(netD)$name, 
+  Degree_Centrality = V(netD)$degree_centrality,
+  Betweenness_Centrality = V(netD)$betweenness_centrality,
+  Closeness_Centrality = V(netD)$closeness_centrality,
+  Page_rank = V(netD)$page_rank
+)
+
+# Create an HTML table with sortable columns using DT
+datatable(vertex_attrs, 
+          options = list(
+            dom = 'Bfrtip',
+            buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+          ),
+          rownames = FALSE
+)
+```
+Using this table, I found that the nodes with the highest degree centrality are all of the movies made in the 2000's. These nodes had a value of 0.221. All nodes had a betweenness centrality of 0. The ones with the highest closeness centrality are the two 1920's movies named, "Faust: Eine deutsche Volkssage" and "The Cameraman". The value for these was 1. The highest page_rank belongs to all nodes from the 1980's. The page rank for these are 0.010. 
+
+
+
+### Interpretation {#AnalysisAndResults_Results_Interp}
+
+<!--#  Interpret the results in the context of the problem -->
+
+Based on these results, we now know who the most important directors, movies, genres, and decades are in this study. The most important directors are "Steven Spielberg", "Lee Unkrich", "David Hand", and "Bill Roberts". "Steven Spielberg" is considered one of the most important directors because he has the most movies on this list as seen by his movies having the highest degree centrality in the Movie-Director network. "Bill Roberts" has the most connections with other directors in the Director-Director network which puts him on this list. "David Hand" is important when making connections between different directors due to how he has the highest betweenness centrality for the Director-Director network. "Lee Unkrich" is an important director because he has the highest page rank in the Director-Director network with imporant movies such as "Toy Story 3" which has the highest betweenness centrality and page rank in the Movie-Director network.
+
+The two most important decades at the time of this dataset being made seem to be the 2000's and the 1980's. This is because the 2000's have the highest degree centrality on the Movie-Decade network and the 1980's have the highest page rank. The 2000's having the highest degree centrality means that that decade has the most movies on the list. The 1980's having the highest page rank means that movies made in this time period have the most control over the flow of information compared to any of the other networks.
+
+Although these networks may never be "under attack", it is still important that we analyze their robustness and resilience. The director-director network as well as the movie-director network are the least robust because of how few nodes are present in most components. Due to this, one attack on most components would be detrimental. The movie-decade plot is more robust because of how interconnected it is. An attack on this network would be less devastating. The resilience has a similar conclusion. Because of the high degree, the movie-decade network would do much better than the other two as building back. 
+
+# Conclusions {#Conclusions}
+
+<!--#  Make succinct arguments connecting your data, analysis, and results to the original problem statement -->
+
+The goal of this project was to find the most important directors and movies of all time and make connections between what genres and directors have the largest impact on what makes a successful movie. 
+
+<!--#  Explain what has been found, or decided, and the impact of those findings or decisions-->
+
+From this data and the processes used to plot and interpret it, I have learned about who and what are the most important nodes in each plot. From the analyses that have been done, I learned that Steven Spielberg appears to be one of if not the most important director. I came to this conclusion because of the fact that he has the most movies on this list out of any other director as seen from his movies having the highest degree centrality in the Movie-Director network. Bill Roberts, David Hand, and Lee Unkrich are also very important directors and they all happen to be in the world of animation. They are considered important as well because they each had a highest centrality value for the Director-Director network. The 2000's and 1980's are also an important time for movies because 2000's movies had the highest degree centrality and 1980's had the highest page rank. 
+
+We have learned that the movie industry is not exempt from change. As popular directors and genres change, new insights can be made in the film industry. At this moment in time, Steven Spielberg continues to show his dominance in film and who knows when this title will be passed down to someone else? Animated movies have been a staple for the longest time as well. Will this ever change? Drama, Comedy, and Crime have been extremely popular genres while Westerns and Mysteries seem to fade away. As this dataset was made in 2015 and therefore doesn't have movies from the 2010's, we still have more to learn if movies will continue to improve, or if it will be similar to a bell curve with there being less and less great movies each decade due to originality being more difficult.
+
+<!--#  Identify areas for further study or particular insights that future researchers might find critical to their own work. -->
+
+An area of further study that future researchers should consider is analyzing the change of successful genres over time. Successful could mean the amount on the list or the average IMDb rating. With this, we will have even more insight into what has made movies successful and how that could change in the future. In addition, if data that includes the main actors for each film could be made, adding that to the analysis to be able to find the most successful actors could be interesting. 
+
+```{=tex}
+\newpage
+\singlespacing
+\onecolumn
+```
+<!--#  You don't need to do anything with this section.  So long as you have put in-text citations in the paper, it will auto generate.  Remember Appendix D where you reference the packages you use!!!. -->
+
+# References {#References}
+::: {#refs}
+:::
+
+\newpage
+
+<!-- # Appendix A: Data Dictionary {#DataDictionary .unnumbered} -->
+
+<!-- | Variable Name | Description                           | Missing Values | -->
+<!-- |---------------|---------------------------------------|----------------| -->
+<!-- | Response      | The response variable for the dataset | 0              | -->
+<!-- | Var1          | The first explanatory variable        | 14             | -->
+<!-- | Var2          | The second explanatory variable       | 3              | -->
+
+<!-- : Data Dictionary -->
+
+<!-- \newpage -->
+
+# Appendix A: Plots and Tables {#AppendixAPlots .unnumbered}
+
+<!--#
+Plots and Tables (These may also be included in the relevant sections, such as DATA, ANALYSIS, or RESULTS.)-->
+
+```{r echo=FALSE, include=FALSE}
+rownames <- c("Vertex Count", "Edge Count", "Diameter", "Density", "Component Count", "Transitivity", "Centralization Degree", "Centralization Closeness", "Centralization Betweenness", "Centralization Eigenvalue", "Cohesion", "Compactness", "Global Clustering Coefficient")
+```
+
+```{r echo=FALSE, include=FALSE}
+#Functions For Creating Tables
+
+create_topology_table_igraph <- function(net) {
+  output_matrix <- matrix(c(vcount(net), ecount(net), diameter(net), graph.density(net), length(clusters(net)), transitivity(net), centralization.degree(net)$centralization, centralization.closeness(net)$centralization, centralization.betweenness(net)$centralization,centralization.evcent(net)$centralization, cohesion(net), mean(igraph::closeness(net)), transitivity(net,type="global")))
+  return (output_matrix)
+}
+```
+
+```{r echo=FALSE, include=FALSE}
+#Directors Topology Table
+
+edges_matrix <- matrix(unlist(edge_list), ncol = 2, byrow = TRUE)
+directors_igraph_network <- graph_from_edgelist(edges_matrix, directed = FALSE)
+#net <- net[1:145]
+V(directors_igraph_network)$name <- V(net)
+
+#Create table matrix
+directors_topology_matrix <- create_topology_table_igraph(directors_igraph_network)
+
+#Set row names
+rownames(directors_topology_matrix) <- rownames
+
+#Set title, font, style and print
+directors_topology_matrix %>%
+     kbl(caption = "Topographical Measures of Graphs") %>%
+     kable_classic(full_width = F, html_font = "Cambria")
+```
+
+```{r echo=FALSE, include=FALSE}
+#Movie Topology Table
+
+edges_matrix <- matrix(unlist(edge_listM), ncol = 2, byrow = TRUE)
+movie_igraph_network <- graph_from_edgelist(edges_matrix, directed = FALSE)
+V(movie_igraph_network)$name <- V(netM)
+
+#Create table matrix
+movie_topology_matrix <- create_topology_table_igraph(movie_igraph_network)
+
+#Set row names
+rownames(movie_topology_matrix) <- rownames
+
+#Set title, font, style and print
+movie_topology_matrix %>%
+     kbl(caption = "Topographical Measures of Graphs") %>%
+     kable_classic(full_width = F, html_font = "Cambria")
+```
+
+```{r echo=FALSE, include=FALSE}
+#Decade Topology Table
+
+edges_matrix <- matrix(unlist(edge_listD), ncol = 2, byrow = TRUE)
+decade_igraph_network <- graph_from_edgelist(edges_matrix, directed = FALSE)
+V(decade_igraph_network)$name <- V(netD)
+
+#Create table matrix
+decade_topology_matrix <- create_topology_table_igraph(decade_igraph_network)
+
+#Set row names
+rownames(decade_topology_matrix) <- rownames
+
+#Set title, font, style and print
+decade_topology_matrix %>%
+     kbl(caption = "Topographical Measures of Graphs") %>%
+     kable_classic(full_width = F, html_font = "Cambria")
+```
+
+The following graph displays the key topographical measures of the three graphs that were apart of this project.
+
+```{r echo=FALSE, include=TRUE}
+basic_topography <- cbind(directors_topology_matrix, movie_topology_matrix, decade_topology_matrix)
+colnames(basic_topography) <- c("Directors", "Movies", "Decades")
+
+# basic_topography <- cbind(keywords_topology_matrix, references_topology_matrix)
+# colnames(basic_topography) <- c("Keywords", "References")
+
+basic_topography %>%
+     kbl(caption = "Topographical Measures of Graphs") %>%
+     kable_classic(full_width = F, html_font = "Cambria")
+```
+These topographical measures give us some important insight into the three networks. First off, we can see that the Decades network has the highest density due to how every node within a component is connected to each other and there aren't as many components. The transitivity and global clustering coefficient are highest with the movies network because most of the components (directors) seem to have around three movies present on the list. The directors network has the highest eigenvalue centralization because of that one component that had way more nodes and connections in it than any of the other components. These nodes also seem to be ones that could be considered important.
+
+<!--# Include descriptions of what is included in each data visualization and table, including the insights gained. Include informative labels and titles Avoid using too many digits in the results, which you are likely to get from standard software. Avoid including tables or plots not necessary to support the DATA, ANALYSIS, or RESULTS sections-->
+
+<!-- A summary of the dataset is provided first: -->
+
+<!-- ```{r echo=FALSE, include=TRUE, results="asis"} -->
+
+<!-- #library(summarytools) -->
+<!-- #st_options( -->
+<!-- #          plain.ascii  = FALSE, -->
+<!-- #          subtitle.emphasis = FALSE, -->
+<!-- #          style        = "rmarkdown", -->
+<!-- #          dfSummary.style = "grid", -->
+<!-- #          dfSummary.graph.magnif = 0.75, -->
+<!-- #          dfSummary.valid.col = FALSE, -->
+<!-- #          tmp.img.dir  = "/tmp") -->
+<!-- #dfSummary(Wage) -->
+
+<!-- ``` -->
+
+\newpage
+
+# Appendix B: Code/syntax {#AppendixBCode .unnumbered}
+
+<!--# Include all of your code in an Appendix so that your analysis and results can be replicated -->
+
+<!--# The code in this chunk will NOT be run.  This provides to code for reproducibility and repeatability but does not bog down the system be regenerating your entire paper.  If you have taken my suggestion and put all the code at the very top above the paper, you may simply copy and paste into this code chunk.  If you are working in python using the reticulate package, you need to change all of these cells to python except for the .-->
+
+```{r echo=TRUE, eval = FALSE, include=TRUE}
+library(igraph)
+library(network)
+library(kableExtra)
+library(RColorBrewer)
+
+data <- read.csv("Movie Dataset.csv", header=T, as.is=T)
+
+# Split Directors column into individual directors
+all_directors <- strsplit(as.character(data$Directors), ",")
+
+# Flatten the list and get unique directors
+unique_directors <- unique(unlist(all_directors))
+
+# Initialize variables
+num_pairs <- 0
+edge_list <- matrix(nrow = 0, ncol = 2)
+
+# Create pairs of directors that are a part of the same movie
+for (directors_list in all_directors) {
+  if (length(directors_list) > 1) {
+    director_pairs <- combn(directors_list, 2)
+    num_pairs_article <- ncol(director_pairs)
+    edge_list <- rbind(edge_list, t(director_pairs))
+    num_pairs <- num_pairs + num_pairs_article
+  }
+}
+
+# Create an edgelist
+edge_list_df <- as.data.frame(edge_list)
+colnames(edge_list_df) <- c("director1", "director2")
+
+# Make a data frame
+net <- graph_from_data_frame(edge_list_df, directed = FALSE)
+
+#Use this dataframe to find communities
+netS <- simplify(net)
+communities <- edge.betweenness.community(netS)
+membership <- membership(communities)
+V(net)$community <- membership[V(netS)]
+
+#Find the degree and assign colors to different communities
+V(net)$degree <- igraph::degree(net)
+Community <- length(unique(V(net)$community))
+color_pal <- rainbow(Community)
+
+#Plot the data with the color based on the community and the size based on the degree
+plot(net,
+
+     vertex.label = NA,
+     vertex.color = color_pal[as.numeric(factor(V(net)$community))],
+     vertex.size = 5,
+
+     main = "Director-Director Network"
+)
+```
+
+```{r echo=TRUE, eval = FALSE, include=TRUE}
+# Create a vector to store edges
+edge_listM <- c()
+
+# Add Edges for Shared Directors
+for (i in 1:nrow(data)) {
+  movie1 <- data$Title[i]
+  directors1 <- strsplit(as.character(data$Directors[i]), ", ")[[1]]
+  
+  shared_movies <- data[data$Directors %in% directors1 & data$Title != movie1, "Title"]
+
+    if (length(shared_movies) > 1) {
+    movie_pairs <- combn(shared_movies, 2)
+    num_pairs_article <- ncol(movie_pairs)
+    edge_listM <- rbind(edge_listM, t(movie_pairs))
+    num_pairs <- num_pairs + num_pairs_article
+  }
+}
+
+edge_listM_df <- as.data.frame(edge_listM)
+colnames(edge_listM_df) <- c("movie1", "movie2")
+
+netM <- graph_from_data_frame(edge_listM_df, directed = FALSE)
+
+# Get node names from the graph
+node_names <- V(netM)$name
+
+
+# Create a lookup table from original_dataset
+lookup_table <- setNames(data$IMDb.Rating, data$Title)
+
+# Iterate through each node in the graph
+for (node_name in node_names) {
+  # Find corresponding title in the lookup table
+  title <- node_name
+  if (title %in% names(lookup_table)) {
+    # Update IMDb rating attribute in the graph
+    netM <- set_vertex_attr(netM, "IMDb.Rating", index = node_name, value = lookup_table[[title]])
+  }
+}
+# Create a lookup table from original_dataset
+lookup_table2 <- setNames(data$Genres, data$Title)
+
+# Iterate through each node in the graph
+for (node_name in node_names) {
+  # Find corresponding title in the lookup table
+  title <- node_name
+  if (title %in% names(lookup_table2)) {
+    # Get genres for the movie from the lookup table
+    genres <- lookup_table2[[title]]
+    
+    # Ensure genres is of character type
+    genres <- as.character(genres)
+
+    # Split genres string by comma and take only the first genre
+    genre_part <- strsplit(genres, ",")[[1]]
+    first_genre <- trimws(genre_part[1]) 
+    
+    # Update Genre attribute in the graph with the first two genres
+    netM <- set_vertex_attr(netM, "Genre", index = node_name, value = first_genre)
+  }
+}
+
+# Define the breaks for different size groups based on IMDb ratings
+breaks <- c(0, 7.5, 8, 8.5, 9, 9.5, 10)  # Adjust the breaks as needed
+
+# Create the size groups based on IMDb ratings
+size_groups <- cut(V(netM)$IMDb.Rating, breaks = breaks, labels = FALSE)
+color_pal <- rainbow(length(unique(V(netM)$Genre))) 
+
+# Plot the network
+plot(netM,
+
+     vertex.label = NA,
+     vertex.color = color_pal[factor(V(netM)$Genre)], 
+     vertex.size = size_groups*3,
+
+     main = "Movie-Director Network",
+)
+
+legend("left",
+       legend = levels(factor(V(netM)$Genre)),
+       fill = color_pal,
+       title = "Genre",
+       cex=0.7
+)
+```
+
+```{r echo=TRUE, eval = FALSE, include=TRUE}
+# Create a vector to store edges
+edge_listD <- c()
+
+unique_decades <- unique((data$Year %/% 10) * 10)
+
+
+for (decade in unique_decades) {
+  # Subset the data for the current decade
+  decade_data <- data[(data$Year %/% 10) * 10 == decade, ]
+  
+  # Sample a subset of movies for the current decade
+   sample_size <- max(1, floor(nrow(decade_data) / 10)) 
+  sampled_movies <- sample(decade_data$Title, size = sample_size, replace = FALSE)
+  
+  # Create edges for the sampled movies
+  if (length(sampled_movies) > 1) {
+    movie_pairs <- combn(sampled_movies, 2)
+    num_pairs_article <- ncol(movie_pairs)
+    edge_listD <- rbind(edge_listD, t(movie_pairs))
+  }
+}
+
+
+edge_listD_df <- as.data.frame(edge_listD)
+colnames(edge_listD_df) <- c("movie1", "movie2")
+
+netD <- graph_from_data_frame(edge_listD_df, directed = FALSE)
+
+# Get node names from the graph
+node_names <- V(netD)$name
+
+
+# Create a lookup table from original_dataset
+lookup_table <- setNames(data$IMDb.Rating, data$Title)
+
+# Iterate through each node in the graph
+for (node_name in node_names) {
+  # Find corresponding title in the lookup table
+  title <- node_name
+  if (title %in% names(lookup_table)) {
+    # Update IMDb rating attribute in the graph
+    netD <- set_vertex_attr(netD, "IMDb.Rating", index = node_name, value = lookup_table[[title]])
+  }
+}
+# Create a lookup table from original_dataset
+lookup_table2 <- setNames(data$Genres, data$Title)
+
+# Iterate through each node in the graph
+for (node_name in node_names) {
+  # Find corresponding title in the lookup table
+  title <- node_name
+  if (title %in% names(lookup_table2)) {
+    # Get genres for the movie from the lookup table
+    genres <- lookup_table2[[title]]
+
+    # Ensure genres is of character type
+    genres <- as.character(genres)
+
+    # Split genres string by comma and take only the first genre
+    genre_part <- strsplit(genres, ",")[[1]]
+    first_genre <- trimws(genre_part[1])
+
+    # Update Genre attribute in the graph with the first two genres
+    netD <- set_vertex_attr(netD, "Genre", index = node_name, value = first_genre)
+  }
+}
+
+# Define the breaks for different size groups based on IMDb ratings
+breaks <- c(0, 7.5, 8, 8.5, 9, 9.5, 10)  # Adjust the breaks as needed
+
+# Create the size groups based on IMDb ratings
+size_groups <- cut(V(netD)$IMDb.Rating, breaks = breaks, labels = FALSE)
+color_pal <- rainbow(length(unique(V(netD)$Genre)))
+
+# Plot the network
+plot(netD,
+     
+     vertex.label = NA,
+     vertex.color = color_pal[factor(V(netD)$Genre)], 
+     vertex.size = size_groups*3,
+
+     main = "Movie-Decade Network",
+)
+
+legend("left",
+       legend = levels(factor(V(netD)$Genre)),
+       fill = color_pal,
+       title = "Genre",
+       cex=0.7
+)
+```
+
+```{r echo=FALSE, include=FALSE}
+#Export networks
+write.graph(net, "director.pajek", format = "pajek")
+write.graph(netM, "movie.pajek", format = "pajek")
+write.graph(netD, "decade.pajek", format = "pajek")
+```
+# Appendix C: Acknowledgements {#AppendixCAcknowledge .unnumbered}
+
+```{r packages, comment=NA, include=FALSE, results = FALSE}
+#The following code will generate a bibliography file for the packages that have been used in the creation of your file.  
+knitr::write_bib(.packages(), "packages.bib")
+```
+
+The R statistical language was used in the development of this article [@R-base].
